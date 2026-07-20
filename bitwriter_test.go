@@ -14,6 +14,9 @@ func TestBitWriterFlush32(t *testing.T) {
 	if len(bw.out) != 4 {
 		t.Fatalf("expected 4 bytes after flush32, got %d", len(bw.out))
 	}
+	if bw.out[0] != 0xEF || bw.out[1] != 0xBE || bw.out[2] != 0xAD || bw.out[3] != 0xDE {
+		t.Fatalf("expected 0xDEADBEEF in little endian, got %x", bw.out)
+	}
 	bw.addBits16NC(0xFF, 8)
 	bw.flush32()
 	// 8 bits < 32, so no additional flush.
