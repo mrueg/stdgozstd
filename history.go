@@ -56,14 +56,10 @@ func (h *history) setDict(dict *dict) {
 
 // ensureBlock ensures there is room for a full block in the buffer.
 func (h *history) ensureBlock() {
-	avail := cap(h.b) - len(h.b)
-	if avail >= maxCompressedBlockSize {
-		// Enough room for a full block — trim if needed.
-		if avail < h.windowSize && len(h.b) > h.windowSize {
-			discard := len(h.b) - h.windowSize
-			copy(h.b, h.b[discard:])
-			h.b = h.b[:h.windowSize]
-		}
+	if cap(h.b)-len(h.b) >= maxCompressedBlockSize {
+		// Enough room for a full block. Data older than the window is
+		// discarded lazily below, so the window is moved once per
+		// (cap-windowSize) decoded bytes rather than once per block.
 		return
 	}
 	// Not enough room. Trim old data first if possible.
