@@ -5,11 +5,11 @@
 package zstd
 
 import (
+	"encoding/binary"
 	"fmt"
 	"io"
 	"math/bits"
 
-	"github.com/klauspost/stdgozstd/internal/le"
 	"github.com/klauspost/stdgozstd/internal/xxhash"
 )
 
@@ -194,19 +194,15 @@ func hashLen(u uint64, length, mls uint8) uint32 {
 
 // matchLen returns the number of matching bytes at the start of a and b.
 func matchLen(a, b []byte) (n int) {
-	left := len(a)
-	for left >= 8 {
-		diff := le.Load64(a, n) ^ le.Load64(b, n)
+	for len(a) >= 8 && len(b) >= 8 {
+		diff := binary.LittleEndian.Uint64(a) ^ binary.LittleEndian.Uint64(b)
 		if diff != 0 {
 			return n + bits.TrailingZeros64(diff)>>3
 		}
 		n += 8
-		left -= 8
+		a, b = a[8:], b[8:]
 	}
-	a = a[n:]
-	b = b[n:]
-
-	for i := range a {
+	for i := range min(len(a), len(b)) {
 		if a[i] != b[i] {
 			break
 		}
