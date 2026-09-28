@@ -65,6 +65,7 @@ type Writer struct {
 	enc encoder
 
 	filling []byte
+	out     []byte // reused output buffer for single-block frames
 
 	blockSize int
 	wndSize   int
@@ -440,10 +441,9 @@ func (w *Writer) nextBlock(final bool) error {
 	}
 	if !w.headerWritten {
 		if final {
-			var current []byte
-			current = w.encodeAll(w.enc, w.filling, current)
+			w.out = w.encodeAll(w.enc, w.filling, w.out[:0])
 			var n2 int
-			n2, w.err = w.w.Write(current)
+			n2, w.err = w.w.Write(w.out)
 			if w.err != nil {
 				return w.err
 			}
