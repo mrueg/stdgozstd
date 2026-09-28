@@ -5,7 +5,6 @@
 package zstd
 
 import (
-	"fmt"
 	"io"
 	"math/bits"
 
@@ -80,12 +79,13 @@ func (e *encBase) block() *blockEnc {
 // addBlock appends src to history and returns the start offset.
 func (e *encBase) addBlock(src []byte) int32 {
 	if len(e.hist)+len(src) > cap(e.hist) {
-		if cap(e.hist) == 0 {
-			e.ensureHist(len(src))
+		if full := e.histSize(); cap(e.hist) < full {
+			// Grow lazily so small streams do not pay for a full window.
+			n := max(min(2*cap(e.hist), full), len(e.hist)+len(src))
+			h := make([]byte, len(e.hist), n)
+			copy(h, e.hist)
+			e.hist = h
 		} else {
-			if cap(e.hist) < int(e.maxMatchOff+maxCompressedBlockSize) {
-				panic(fmt.Errorf("unexpected buffer cap %d, want at least %d with window %d", cap(e.hist), e.maxMatchOff+maxCompressedBlockSize, e.maxMatchOff))
-			}
 			offset := int32(len(e.hist)) - e.maxMatchOff
 			copy(e.hist[0:e.maxMatchOff], e.hist[offset:])
 			e.cur += offset
@@ -97,11 +97,8 @@ func (e *encBase) addBlock(src []byte) int32 {
 	return s
 }
 
-// ensureHist ensures history buffer has at least n bytes capacity.
-func (e *encBase) ensureHist(n int) {
-	if cap(e.hist) >= n {
-		return
-	}
+// histSize returns the history buffer capacity used once the window is full.
+func (e *encBase) histSize() int {
 	l := e.maxMatchOff
 	if (e.lowMem && e.maxMatchOff > maxCompressedBlockSize) || e.maxMatchOff <= maxCompressedBlockSize {
 		l += maxCompressedBlockSize
@@ -111,10 +108,15 @@ func (e *encBase) ensureHist(n int) {
 	if l < 1<<20 && !e.lowMem {
 		l = 1 << 20
 	}
-	if l < int32(n) {
-		l = int32(n)
+	return int(l)
+}
+
+// ensureHist ensures the (empty) history buffer has at least n bytes capacity.
+func (e *encBase) ensureHist(n int) {
+	if cap(e.hist) >= n {
+		return
 	}
-	e.hist = make([]byte, 0, l)
+	e.hist = make([]byte, 0, n)
 }
 
 // matchlen returns the match length between positions s and t in src.
@@ -145,16 +147,9 @@ func (e *encBase) resetBase(d *dict, singleBlock bool) {
 	}
 	e.hist = e.hist[:0]
 
-	// Ensure buffer fits the current window. Must be after e.cur bump
-	// so len(e.hist) still reflects old history for proper invalidation.
-	e.ensureHist(int(e.maxMatchOff + maxCompressedBlockSize))
+	// The history buffer is grown lazily by addBlock.
 	if d != nil {
-		low := e.lowMem
-		if singleBlock {
-			e.lowMem = true
-		}
 		e.ensureHist(len(d.content) + maxCompressedBlockSize)
-		e.lowMem = low
 		for i, off := range d.offsets {
 			e.blk.recentOffsets[i] = uint32(off)
 			e.blk.prevRecentOffsets[i] = e.blk.recentOffsets[i]
