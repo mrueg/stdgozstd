@@ -241,11 +241,7 @@ func (w *Writer) Reset(wr io.Writer) {
 // newEncoder creates the appropriate encoder for the current level,
 // pulling from a pool when possible to avoid hash table allocation.
 func (w *Writer) newEncoder() encoder {
-	maxOff := int32(w.wndSize)
-	if maxOff == 0 {
-		maxOff = 4 << 20
-	}
-	bufReset := math.MaxInt32 - maxOff*2
+	maxOff, bufReset := w.encoderWindow()
 	cat := encoderCategory(w.level)
 
 	if v := encoderPools[cat].Get(); v != nil {
@@ -276,6 +272,16 @@ func (w *Writer) newEncoder() encoder {
 		e.configure(maxOff, bufReset, w.lowMem)
 		return e
 	}
+}
+
+// encoderWindow returns the maximum match offset and buffer reset
+// threshold for the current configuration.
+func (w *Writer) encoderWindow() (maxOff, bufReset int32) {
+	maxOff = int32(w.wndSize)
+	if maxOff == 0 {
+		maxOff = 4 << 20
+	}
+	return maxOff, math.MaxInt32 - maxOff*2
 }
 
 // Write compresses p and writes it to the underlying writer.
@@ -566,6 +572,16 @@ func (w *Writer) encodeAll(enc encoder, src, dst []byte) []byte {
 		dst = make([]byte, 0, len(src))
 	}
 	dst = fh.appendTo(dst)
+
+	if w.dict == nil {
+		// Without a dictionary, matches can only reference src itself, so
+		// limit the match window to the frame window. Otherwise reset
+		// advances e.cur by the full configured window on every call,
+		// forcing a full hash table clear every few hundred calls
+		// (32MB+ for the best encoder).
+		_, bufReset := w.encoderWindow()
+		enc.configure(int32(fh.WindowSize), bufReset, w.lowMem)
+	}
 
 	if raw, ok := enc.(rawBlockWriter); ok {
 		enc.reset(nil, true)
