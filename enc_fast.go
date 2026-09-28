@@ -375,24 +375,27 @@ func (e *fastEncoder) reset(d *dict, singleBlock bool) {
 		return
 	}
 	e.lastDictID = d.id
-	e.cur = e.maxMatchOff
+	e.loadDictFast(d)
+}
+
+// loadDictFast hashes d into e.table. It reports whether the tables were
+// cleared (and e.cur rebased), so embedding encoders can do the same.
+func (e *fastEncoder) loadDictFast(d *dict) (cleared bool) {
 	const hashLog = tableBits
+	if cleared = e.dictTablesNeedClear(); cleared {
+		e.table = [tableSize]tableEntry{}
+	}
 	if len(d.content) < 8 {
-		// Clear table to avoid stale entries from a previous dict.
-		for i := range e.table[:] {
-			e.table[i] = tableEntry{}
-		}
-		return
+		return cleared
 	}
-	for i := range e.table[:] {
-		e.table[i] = tableEntry{}
-	}
-	end := int32(len(d.content)) - 8 + e.maxMatchOff
-	for i := e.maxMatchOff; i < end; i += 2 {
-		cv := load6432(d.content, i-e.maxMatchOff)
+	base := e.cur
+	end := int32(len(d.content)) - 8 + base
+	for i := base; i < end; i += 2 {
+		cv := load6432(d.content, i-base)
 		nextHash := hashLen(cv, hashLog, tableFastHashLen)
 		nextHash1 := hashLen(cv>>8, hashLog, tableFastHashLen)
 		e.table[nextHash] = tableEntry{val: uint32(cv), offset: i}
 		e.table[nextHash1] = tableEntry{val: uint32(cv >> 8), offset: i + 1}
 	}
+	return cleared
 }

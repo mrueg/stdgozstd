@@ -164,6 +164,19 @@ func (e *encBase) resetBase(d *dict, singleBlock bool) {
 	}
 }
 
+// dictTablesNeedClear prepares e.cur for hashing a dictionary into the
+// match tables and reports whether the caller must clear its tables first.
+// resetBase has already moved e.cur past every existing table entry, so
+// stale entries are out of reach and clearing is only needed when e.cur is
+// close to the wraparound limit, in which case e.cur is rebased.
+func (e *encBase) dictTablesNeedClear() bool {
+	if e.cur < e.bufferReset/2 {
+		return false
+	}
+	e.cur = e.maxMatchOff
+	return true
+}
+
 // Hash multiplier primes for various match lengths.
 const (
 	prime3bytes = 506832829

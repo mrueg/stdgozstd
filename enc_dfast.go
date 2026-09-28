@@ -475,22 +475,24 @@ encodeLoop:
 
 // reset prepares the encoder for a new stream, optionally loading a dictionary.
 func (e *doubleFastEncoder) reset(d *dict, singleBlock bool) {
-	e.fastEncoder.reset(d, singleBlock)
+	e.resetBase(d, singleBlock)
 	if d == nil {
 		return
 	}
-	for i := range e.longTable[:] {
-		e.longTable[i] = tableEntry{}
+	e.lastDictID = d.id
+	if e.loadDictFast(d) {
+		e.longTable = [dFastLongTableSize]tableEntry{}
 	}
 	if len(d.content) < 8 {
 		return
 	}
+	base := e.cur
 	cv := load6432(d.content, 0)
 	h := hashLen(cv, dFastLongTableBits, dFastLongLen)
-	e.longTable[h] = tableEntry{val: uint32(cv), offset: e.maxMatchOff}
-	end := int32(len(d.content)) - 8 + e.maxMatchOff
-	for i := e.maxMatchOff + 1; i < end; i++ {
-		cv = cv>>8 | (uint64(d.content[i-e.maxMatchOff+7]) << 56)
+	e.longTable[h] = tableEntry{val: uint32(cv), offset: base}
+	end := int32(len(d.content)) - 8 + base
+	for i := base + 1; i < end; i++ {
+		cv = cv>>8 | (uint64(d.content[i-base+7]) << 56)
 		h = hashLen(cv, dFastLongTableBits, dFastLongLen)
 		e.longTable[h] = tableEntry{val: uint32(cv), offset: i}
 	}

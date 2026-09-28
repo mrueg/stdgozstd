@@ -382,19 +382,17 @@ func (e *betterFastEncoder) reset(d *dict, singleBlock bool) {
 		return
 	}
 	e.lastDictID = d.id
-	e.cur = e.maxMatchOff
-	for i := range e.table[:] {
-		e.table[i] = tableEntry{}
-	}
-	for i := range e.longTable[:] {
-		e.longTable[i] = prevEntry{}
+	if e.dictTablesNeedClear() {
+		e.table = [betterShortTableSize]tableEntry{}
+		e.longTable = [betterLongTableSize]prevEntry{}
 	}
 	if len(d.content) < 8 {
 		return
 	}
-	end := int32(len(d.content)) - 8 + e.maxMatchOff
-	for i := e.maxMatchOff; i < end; i += 4 {
-		cv := load6432(d.content, i-e.maxMatchOff)
+	base := e.cur
+	end := int32(len(d.content)) - 8 + base
+	for i := base; i < end; i += 4 {
+		cv := load6432(d.content, i-base)
 		e.table[hashLen(cv, betterShortTableBits, betterShortLen)] = tableEntry{val: uint32(cv), offset: i}
 		e.table[hashLen(cv>>8, betterShortTableBits, betterShortLen)] = tableEntry{val: uint32(cv >> 8), offset: i + 1}
 		e.table[hashLen(cv>>16, betterShortTableBits, betterShortLen)] = tableEntry{val: uint32(cv >> 16), offset: i + 2}
@@ -402,9 +400,9 @@ func (e *betterFastEncoder) reset(d *dict, singleBlock bool) {
 	}
 	cv := load6432(d.content, 0)
 	h := hashLen(cv, betterLongTableBits, betterLongLen)
-	e.longTable[h] = prevEntry{offset: e.maxMatchOff, prev: e.longTable[h].offset}
-	for i := e.maxMatchOff + 1; i < end; i++ {
-		cv = cv>>8 | (uint64(d.content[i-e.maxMatchOff+7]) << 56)
+	e.longTable[h] = prevEntry{offset: base, prev: e.longTable[h].offset}
+	for i := base + 1; i < end; i++ {
+		cv = cv>>8 | (uint64(d.content[i-base+7]) << 56)
 		h = hashLen(cv, betterLongTableBits, betterLongLen)
 		e.longTable[h] = prevEntry{offset: i, prev: e.longTable[h].offset}
 	}
